@@ -1,0 +1,204 @@
+---
+title: "Reproducible Research Project 1"
+author: "Bill Seely"
+date: "June 27, 2017"
+output: html_document
+---
+## Make sure needed libraries are referenced
+
+```{r setup, results="hide",warning=FALSE, message=FALSE}
+require(dplyr)
+require(Hmisc)
+require(ggplot2)
+```
+
+## Loading and Preprocessing the Data
+
+Make the /data and /figure subdirectories if they doesn't exist.
+Then pull in and unzip the data needed for the analysis,
+converting the date field to an R date field
+
+
+```{r getdata, echo=TRUE}
+if(dir.exists("./data")==FALSE) dir.create("./data",recursive = FALSE)
+if(dir.exists("./figure")==FALSE) dir.create("./figure",recursive = FALSE)
+download.file("https://d396qusza40orc.cloudfront.net/repdata%2Fdata%2Factivity.zip", destfile="./data/ActivityData.zip")
+unzip("./data/ActivityData.zip",overwrite = TRUE, exdir="./data")
+activityData_raw<-read.csv("./data/activity.csv", as.is=TRUE)
+activityData_proc<-activityData_raw
+activityData_proc$date<-as.Date(activityData_proc$date)
+```
+
+The names of the fields in the imported data:
+`r names(activityData_raw)`
+
+The first 10 rows of the imported data:
+```{r,echo=FALSE}
+head(activityData_proc,10)
+```
+
+The last 10 rows of the imported data:
+```{r,echo=FALSE}
+tail(activityData_proc,10)
+```
+
+The names of the fields in the imported data are:
+`r names(activityData_raw)`
+
+## What is the mean for total number of steps taken each day?
+
+Summing the steps by day:
+```{r,echo=TRUE}
+activityData_proc %>% group_by(date) %>% summarise("steps"=sum(steps))->dailySteps_tot
+```
+
+Plotting a histogram of daily step totals (before missing values imputation)
+```{r plot1, echo=TRUE}
+hist(dailySteps_tot$steps, main="Histogram of Total Steps per Day", xlab = "Steps")
+```
+
+```{r outplot1, include=FALSE}
+#send plot1 to png file
+png(filename = "./figure/plot1.png", width = 480, height = 480)
+hist(dailySteps_tot$steps, main="Histogram of Total Steps per Day", xlab = "Steps")
+dev.off()
+```
+
+
+The mean for number of steps per day is
+```{r echo=TRUE}
+mean(dailySteps_tot$steps,na.rm = TRUE)
+```
+The median for number of steps per day is
+```{r echo=TRUE}
+median(dailySteps_tot$steps,na.rm = TRUE)
+```
+
+Time series plot of daily step totals
+```{r plot2, echo=TRUE}
+plot(dailySteps_tot$date, dailySteps_tot$steps, main="Total Number of Steps per Day", xlab="Date", ylab="Steps", type="b")
+```
+
+```{r outplot2, include=FALSE}
+#send plot2 to png file
+png(filename = "./figure/plot2.png", width = 480, height = 480)
+plot(dailySteps_tot$date, dailySteps_tot$steps, main="Total Number of Steps per Day", xlab="Date", ylab="Steps", type="b")
+dev.off()
+```
+
+## What is the daily activity pattern?
+
+Calculate the average steps per interval over all days:
+
+```{r}
+activityData_proc %>% group_by(interval) %>% summarise("steps"=mean(steps, na.rm=TRUE))->dailySteps_intavg
+```
+
+
+Time series plot of average steps per interval over all days:
+
+```{r plot3, echo=TRUE}
+plot(dailySteps_intavg$interval, dailySteps_intavg$steps, main="Average Steps per Interval", xlab="Interval", ylab="Avg. Steps for Interval", type="l", col="red")
+```
+
+```{r outplot3, include=FALSE}
+#send plot3 to png file
+png(filename = "./figure/plot3.png", width = 480, height = 480)
+plot(dailySteps_intavg$interval, dailySteps_intavg$steps, main="Average Steps per Interval", xlab="Interval", ylab="Avg. Steps for Interval", type="l", col="red")
+dev.off()
+```
+
+The highest average for steps is for this row:
+```{r echo=TRUE} 
+dailySteps_intavg[which(dailySteps_intavg$steps == max(dailySteps_intavg$steps, na.rm=TRUE)), ]
+```
+
+
+## Imputing missing values
+
+The count of missing values in the raw steps data is:
+```{r echo=TRUE}
+sum(is.na(activityData_raw$steps))
+```
+
+Missing data are replaced using the impute() function from the Hmisc package.
+This replaces missing data with the median value given for the other values in the row. Many of the missing values occur over night when there is low or nearly no data, and so the imputed values that replace them are mostly zeros. 
+
+```{r, echo=TRUE}
+activityData_proc$imputedSteps<-with(activityData_proc, impute(steps, median))
+tail(activityData_proc,10)
+```
+
+The count of missing values in the imputed steps data is:
+```{r echo=TRUE}
+sum(is.na(activityData_proc$imputedSteps))
+```
+
+Histogram of steps per day for imputed steps data:
+```{r plot4, echo=TRUE}
+activityData_imp <-(activityData_proc[,c(2,3,4)])
+activityData_imp$imputedSteps<-as.numeric((activityData_imp$imputedSteps))
+activityData_imp %>% group_by(date) %>%
+summarise("steps"=sum(imputedSteps))->dailySteps_imptot
+
+hist(dailySteps_imptot$steps, main="Histogram of Total Steps per Day (w/ Imputed Missing Data)", xlab = "Steps")
+```
+
+
+```{r outplot4, include=FALSE}
+#send plot4 to png file
+png(filename = "./figure/plot4.png", width = 480, height = 480)
+hist(dailySteps_imptot$steps, main="Histogram of Total Steps per Day (w/ Imputed Missing Data)", xlab = "Steps")
+dev.off()
+```
+
+The mean for number of steps per day with imputed values is
+```{r echo=TRUE}
+mean(dailySteps_imptot$steps,na.rm = TRUE)
+```
+The median for number of steps per day with imputed values is
+```{r echo=TRUE}
+median(dailySteps_imptot$steps,na.rm = TRUE)
+```
+
+
+## Are there differences in activity patterns between weekdays and weekends?
+
+```{r weekdays, echo=TRUE}
+weekdays1 <- c('Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday')
+activityData_imp$wDay<- factor((weekdays(activityData_imp$date) %in% weekdays1),
+                               levels=c(FALSE, TRUE), labels=c('weekend', 'weekday'))
+```
+
+```{r plot5, echo=TRUE}
+activityData_imp%>%group_by(interval, wDay)%>%
+summarise("steps"=mean(imputedSteps))->activityData_avg
+
+stepsByInterval <- ggplot(activityData_avg, aes(interval, steps, color="red")) +
+geom_line(show.legend=FALSE) +
+ggtitle("Average Steps per Interval") +
+xlab("Interval") + ylab("Average Steps") +
+theme(plot.title = element_text(lineheight=.8, face="bold",
+size = 20)) +
+theme(text = element_text(size=18))
+
+stepsByInterval + facet_grid(. ~ wDay)
+```
+
+
+```{r outplot5, include=FALSE}
+#send plot5 to png file
+png(filename = "./figure/plot5.png", width = 480, height = 480)
+stepsByInterval <- ggplot(activityData_avg, aes(interval, steps, color="red")) +
+geom_line(show.legend=FALSE) +
+ggtitle("Average Steps per Interval") +
+xlab("Interval") + ylab("Average Steps") +
+theme(plot.title = element_text(lineheight=.8, face="bold",
+size = 20)) +
+theme(text = element_text(size=18))
+
+stepsByInterval + facet_grid(. ~ wDay)
+dev.off()
+```
+
+
